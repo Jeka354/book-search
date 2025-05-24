@@ -56,13 +56,7 @@ const API_URL = 'https://web-gate.chitai-gorod.ru';
 const API_TOKEN = 'Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwczovL3VzZXItcmlnaHQiLCJzdWIiOiJjOTMxYmZlMzYxNTMzMjMyNTA0MDg4MDA2NjA2OTRlMmRiNTJkODkyNzhkYWU2NThkNWQxYTQ0NGJmMDUzY2NmIiwiaWF0IjoxNzQ3NzQzMDAzLCJleHAiOjE3NDc3NDY2MDMsInR5cGUiOjEwfQ.mL9gIIlHMOGL0TtHwcPj1Shlh4N_nCjvpBgC9aCX9kk';
 const POPULAR_SUGGESTIONS = ['книги', 'канцтовары', 'подарки', 'бестселлеры', 'новинки'];
 
-const searchHistory = ref(['пиши сокращай ильяхов',
-  'пушкин сказки',
-  'ручка шариковая синяя 7 мм',
-  'гарри поттер',
-  'грри пттр',
-  'поттер'
-]); //пока с заглушкой
+const searchHistory = ref([]); 
 const searchQuery = ref(''); // поисковый запрос
 const showSuggestions = ref(false); // флаг отображения подсказок
 const apiSuggestions = ref([]); // апишка для подсказок
@@ -109,36 +103,53 @@ const fetchSuggestions = async (phrase) => {
   if (phrase.length < 3) return;
   
   isLoading.value = true;
+  apiSuggestions.value = [];
+  authors.value = [];
+  products.value = [];
   
   try {
     const response = await fetch(
-      `${API_URL}/api/v2/search/search-phrase-suggests?phrase=${encodeURIComponent(phrase)}&include[]=authors&include[]=products`,
+      `${API_URL}/api/v2/search/search-phrase-suggests?phrase=${encodeURIComponent(phrase)}`,
       {
         headers: {
-          'Authorization': API_TOKEN
+          'Authorization': API_TOKEN,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
         }
       }
     );
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
     
     const data = await response.json();
     
-    apiSuggestions.value = data.included
-      .filter(item => item.type === 'searchPhraseSuggest')
-      .map(item => item.attributes.plainPhrase)
+    const included = data?.included || [];
+
+    apiSuggestions.value = included
+      .filter(item => item?.type === 'searchPhraseSuggest')
+      .map(item => item?.attributes?.plainPhrase || '')
+      .filter(Boolean)
       .slice(0, 5);
       
-    authors.value = data.included
-      .filter(item => item.type === 'searchFoundAuthor')
-      .map(item => item.attributes.fullName)
+    authors.value = included
+      .filter(item => item?.type === 'searchFoundAuthor')
+      .map(item => item?.attributes?.fullName || '')
+      .filter(Boolean)
       .slice(0, 2);
       
-    products.value = data.included
-      .filter(item => item.type === 'product')
-      .map(item => item.attributes.title)
+    products.value = included
+      .filter(item => item?.type === 'product')
+      .map(item => item?.attributes?.title || '')
+      .filter(Boolean)
       .slice(0, 3);
       
   } catch (error) {
     console.error('API error:', error);
+    apiSuggestions.value = ['Ошибка загрузки подсказок'];
+    authors.value = [];
+    products.value = [];
   } finally {
     isLoading.value = false;
   }
@@ -172,7 +183,7 @@ const handleInput = () => {
   
   debounceTimeout.value = setTimeout(() => {
     fetchSuggestions(searchQuery.value);
-  }, 200);
+  }, 400);
 };
 
 // скрыть подсказки при потере фокуса
