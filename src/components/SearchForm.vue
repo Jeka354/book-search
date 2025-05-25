@@ -4,11 +4,11 @@
     <div class="search-input-wrapper">
       <input 
         type="text" 
-        placeholder="Введите название книги или товара"
         v-model="searchQuery"
         @input="handleInput"
         @focus="showSuggestions = true"
         @blur="onBlur"
+        placeholder="Введите название книги или товара"
         class="search-input"
       >
       <button class="search-button" @click="performSearch">
@@ -16,57 +16,94 @@
           <path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 0 0 1.48-5.34c-.47-2.78-2.79-5-5.59-5.34a6.505 6.505 0 0 0-7.27 7.27c.34 2.8 2.56 5.12 5.34 5.59a6.5 6.5 0 0 0 5.34-1.48l.27.28v.79l4.25 4.25c.41.41 1.08.41 1.49 0 .41-.41.41-1.08 0-1.49L15.5 14zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
         </svg>
       </button>
-      <div class="suggestions-container" v-show="showSuggestions && (filteredSuggestions.length || isLoading)">
+      
+      <!-- Блок подсказок -->
+      <div 
+        class="suggestions-container" 
+        v-show="showSuggestions && (filteredHistory.length || apiSuggestions.length || authors.length || products.length || isLoading)"
+      >
         <div v-if="isLoading" class="loading">Загрузка...</div>
-        <div v-else>
-          <div class="suggestions-title">
-            {{ searchQuery ? 'Результаты поиска' : 'История запросов' }}
-            <!--Кнопка очистки истории при её наличии истории-->
-            <button v-if="!searchQuery && searchHistory.length" @click="clearHistory" class="clear-history">
-                Очистить историю
+        
+        <template v-else>
+          <!-- История поиска -->
+          <div v-if="!searchQuery && filteredHistory.length" class="suggestions-title">
+            История запросов
+            <button v-if="filteredHistory.length" @click="clearHistory" class="clear-history">
+              Очистить историю
             </button>
           </div>
-        </div>
-        
-        <div 
-          class="suggestion-item" 
-          v-for="(item, index) in filteredSuggestions" 
-          :key="index"
-          @mousedown="selectSuggestion(item.replace(/^(Автор|Товар): /, ''))"
-        >
-          {{ item }}
-          <!--Кнопка удаления при нахождении запроса в истории-->
-          <button 
-          v-if="!searchQuery && searchHistory.includes(item)"
-          @click.stop="removeFromHistory(item)"
-          class="remove-item"
+          <div 
+            v-for="(item, index) in filteredHistory" 
+            :key="'history-'+index"
+            class="suggestion-item"
+            @mousedown="selectSuggestion(item)"
           >
-            ×
-          </button>
-        </div>
+            {{ item }}
+            <button @click.stop="removeFromHistory(item)" class="remove-item">×</button>
+          </div>
+          
+          <!-- Результаты поиска -->
+          <template v-if="searchQuery">
+            <div class="suggestions-title">Результаты поиска</div>
+            
+            <!-- Подсказки -->
+            <div 
+              v-for="(suggestion, index) in apiSuggestions" 
+              :key="'suggest-'+index"
+              class="suggestion-item"
+              @mousedown="selectSuggestion(suggestion)"
+            >
+              <span class="suggestion-base">{{ suggestion.base }}</span>
+              <span class="suggestion-completion">{{ suggestion.completion }}</span>
+              <span class="suggestion-hint" v-if="index === 0">
+                {{ suggestion.completion.split(' ')[0] }}
+              </span>
+            </div>
+            
+            <!-- Авторы -->
+            <div class="suggestions-category" v-if="authors.length">Авторы</div>
+            <div 
+              v-for="(author, index) in authors" 
+              :key="'author-'+index"
+              class="suggestion-item author-item"
+              @mousedown="selectSuggestion(author)"
+            >
+              {{ author }}
+            </div>
+            
+            <!-- Товары -->
+            <div class="suggestions-category" v-if="products.length">Книги и товары</div>
+            <div 
+              v-for="(product, index) in products" 
+              :key="'product-'+index"
+              class="suggestion-item product-item"
+              @mousedown="selectSuggestion(product)"
+            >
+              <strong>{{ product.title }}</strong>
+              <div class="product-author" v-if="product.author">{{ product.author }}</div>
+            </div>
+          </template>
+        </template>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed} from 'vue';
+import { ref, computed } from 'vue';
 
-const API_URL = 'https://web-gate.chitai-gorod.ru';
-const API_TOKEN = 'Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwczovL3VzZXItcmlnaHQiLCJzdWIiOiJjOTMxYmZlMzYxNTMzMjMyNTA0MDg4MDA2NjA2OTRlMmRiNTJkODkyNzhkYWU2NThkNWQxYTQ0NGJmMDUzY2NmIiwiaWF0IjoxNzQ3NzQzMDAzLCJleHAiOjE3NDc3NDY2MDMsInR5cGUiOjEwfQ.mL9gIIlHMOGL0TtHwcPj1Shlh4N_nCjvpBgC9aCX9kk';
-const POPULAR_SUGGESTIONS = ['книги', 'канцтовары', 'подарки', 'бестселлеры', 'новинки'];
+// const POPULAR_SUGGESTIONS = ['книги', 'канцтовары', 'подарки', 'бестселлеры', 'новинки'];
 
-const searchHistory = ref([]); 
-const searchQuery = ref(''); // поисковый запрос
-const showSuggestions = ref(false); // флаг отображения подсказок
-const apiSuggestions = ref([]); // апишка для подсказок
+const searchQuery = ref('');
+const showSuggestions = ref(false);
+const isLoading = ref(false);
+const apiSuggestions = ref([]);
 const authors = ref([]);
 const products = ref([]);
-const isLoading = ref(false); // флаг загрузки
-const debounceTimeout = ref(null); //
+const searchHistory = ref([]);
+const debounceTimeout = ref(null);
 
-// Методы для LocalStorage
-// Проверка на существование истории
+// Получение истории из LocalStorage
 const getHistoryFromStorage = () => {
   try {
     const history = localStorage.getItem('searchHistory');
@@ -76,7 +113,7 @@ const getHistoryFromStorage = () => {
   }
 };
 
-// Сохранение запроса в локалку
+// Сохранение истории в LocalStorage
 const saveHistoryToStorage = (history) => {
   try {
     localStorage.setItem('searchHistory', JSON.stringify(history));
@@ -85,141 +122,174 @@ const saveHistoryToStorage = (history) => {
   }
 };
 
-// удаление из истории одного эллемента
-const removeFromHistory = (query) => {
-  const history = getHistoryFromStorage().filter(item => item !== query);
-  saveHistoryToStorage(history);
-  searchHistory.value = history;
-};
+// Инициализация истории при загрузке
+searchHistory.value = getHistoryFromStorage();
 
-// Очистка всех запросов из истории
-const clearHistory = () => {
-  saveHistoryToStorage([]);
-  searchHistory.value = [];
-};
+// Фильтрация истории
+const filteredHistory = computed(() => {
+  if (searchQuery.value) {
+    return searchHistory.value.filter(item => 
+      item.toLowerCase().includes(searchQuery.value.toLowerCase())
+      ).slice(0, 5);
+  }
+  return searchHistory.value.slice(0, 5);
+});
 
-// загрузка подсказок из АПИ
-const fetchSuggestions = async (phrase) => {
-  if (phrase.length < 3) return;
+// Обработчик ввода
+const handleInput = () => {
+  showSuggestions.value = true;
   
+  if (debounceTimeout.value) {
+    clearTimeout(debounceTimeout.value);
+  }
+  
+  debounceTimeout.value = setTimeout(() => {
+    if (searchQuery.value.length >= 3) {
+      fetchSuggestions(searchQuery.value);
+    } else {
+      apiSuggestions.value = [];
+      authors.value = [];
+      products.value = [];
+    }
+  }, 200);
+};
+
+// Имитация API
+const fetchSuggestions = async (phrase) => {
   isLoading.value = true;
   apiSuggestions.value = [];
   authors.value = [];
   products.value = [];
   
   try {
-    const response = await fetch(
-      `${API_URL}/api/v2/search/search-phrase-suggests?phrase=${encodeURIComponent(phrase)}`,
-      {
-        headers: {
-          'Authorization': API_TOKEN,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
+    // Имитация задержки сети
+    await new Promise(resolve => setTimeout(resolve, 200));
+    
+    // Здесь должен быть реальный запрос к API
+    // Вместо этого используем mock-данные
+    const mockResponse = {
+      included: [
+        // Подсказки
+        {
+          attributes: {
+            plainPhrase: phrase + ' подсказка 1',
+            template: `{{${phrase}}} подсказка 1`
+          },
+          type: 'searchPhraseSuggest'
+        },
+        // Авторы
+        {
+          attributes: {
+            fullName: 'Автор для ' + phrase
+          },
+          type: 'searchFoundAuthor'
+        },
+        // Товары
+        {
+          attributes: {
+            title: 'Товар по запросу ' + phrase,
+            authors: [{ fullName: 'Автор товара' }]
+          },
+          type: 'product'
         }
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
+      ]
+    };
     
-    const data = await response.json();
-    
-    const included = data?.included || [];
-
-    apiSuggestions.value = included
+    // Обработка подсказок
+    apiSuggestions.value = mockResponse.included
       .filter(item => item?.type === 'searchPhraseSuggest')
-      .map(item => item?.attributes?.plainPhrase || '')
-      .filter(Boolean)
+      .map(item => {
+        const match = item.attributes.template.match(/\{\{(.+?)\}\}(.*)/);
+        return {
+          base: match[1],
+          completion: match[2],
+          full: item.attributes.plainPhrase
+        };
+      })
       .slice(0, 5);
       
-    authors.value = included
+    // Обработка авторов
+    authors.value = mockResponse.included
       .filter(item => item?.type === 'searchFoundAuthor')
-      .map(item => item?.attributes?.fullName || '')
-      .filter(Boolean)
+      .map(item => item.attributes.fullName)
       .slice(0, 2);
       
-    products.value = included
+    // Обработка товаров
+    products.value = mockResponse.included
       .filter(item => item?.type === 'product')
-      .map(item => item?.attributes?.title || '')
-      .filter(Boolean)
-      .slice(0, 3);
+      .map(item => ({
+        title: item.attributes.title,
+        author: item.attributes.authors?.[0]?.fullName || ''
+      }))
+      .slice(0, 2);
       
   } catch (error) {
     console.error('API error:', error);
-    apiSuggestions.value = ['Ошибка загрузки подсказок'];
-    authors.value = [];
-    products.value = [];
   } finally {
     isLoading.value = false;
   }
 };
 
-// Фильтруем историю поиска в зависимости от введённых данных
-const filteredSuggestions = computed(() => {
-  if (!searchQuery.value) {
-    const history = getHistoryFromStorage();
-    return history.length ? history.slice(0, 5) : POPULAR_SUGGESTIONS;
-  }
-
-  if (searchQuery.value.length < 3) {
-    return [];
+// Выбор подсказки
+const selectSuggestion = (item) => {
+  let selectedText = '';
+  
+  if (typeof item === 'string') {
+    selectedText = item;
+  } else if (item?.full) {
+    selectedText = item.full;
+  } else if (item?.title) {
+    selectedText = item.title;
   }
   
-  return [
-    ...apiSuggestions.value,
-    ...authors.value.map(author => `Автор: ${author}`),
-    ...products.value.map(product => `Товар: ${product}`)
-  ];
-});
-
-// Выпадающие подсказки из истории при фокусе и вводе текста 
-const handleInput = () => {
-  showSuggestions.value = true;
-
-  if (debounceTimeout.value) {
-    clearTimeout(debounceTimeout.value);
-  }
-  
-  debounceTimeout.value = setTimeout(() => {
-    fetchSuggestions(searchQuery.value);
-  }, 400);
+  searchQuery.value = selectedText;
+  showSuggestions.value = false;
+  performSearch();
 };
 
-// скрыть подсказки при потере фокуса
+// Потеря фокуса
 const onBlur = () => {
   setTimeout(() => {
     showSuggestions.value = false;
   }, 200);
 };
 
-const selectSuggestion = (suggestion) => {
-  searchQuery.value = suggestion;
-  showSuggestions.value = false;
-  performSearch();
+// Удаление из истории
+const removeFromHistory = (query) => {
+  const history = getHistoryFromStorage().filter(item => item !== query);
+  saveHistoryToStorage(history);
+  searchHistory.value = history;
 };
 
+// Очистка истории
+const clearHistory = () => {
+  saveHistoryToStorage([]);
+  searchHistory.value = [];
+};
 
+// Выполнение поиска
 const performSearch = () => {
-  if (!searchQuery.value.trim()) return;
+  const query = typeof searchQuery.value === 'string' 
+    ? searchQuery.value 
+    : searchQuery.value.full || searchQuery.value.title || '';
   
-
-  // Добавить  запрос в историю, если его там нет
+  if (!query.trim()) return;
+  
   const history = getHistoryFromStorage();
-  if (!history.includes(searchQuery.value)) {
-    const newHistory = [searchQuery.value, ...history].slice(0, 10);
+  if (!history.includes(query)) {
+    const newHistory = [query, ...history].slice(0, 10);
     saveHistoryToStorage(newHistory);
     searchHistory.value = newHistory;
   }
   
-  console.log('Выполняем поиск:', searchQuery.value);
+  console.log('Выполняем поиск:', query);
 };
-
 </script>
 
 <style scoped>
 .search-container {
   padding: 20px;
+  position: relative;
 }
 
 .search-input-wrapper {
@@ -261,6 +331,14 @@ const performSearch = () => {
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   z-index: 100;
   margin-top: 5px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.loading {
+  padding: 10px;
+  color: #666;
+  text-align: center;
 }
 
 .suggestions-title {
@@ -268,24 +346,12 @@ const performSearch = () => {
   font-size: 0.9em;
   color: #666;
   border-bottom: 1px solid #eee;
-}
-
-.suggestion-item {
-  padding: 8px 15px;
-  cursor: pointer;
-}
-
-.suggestion-item:hover {
-  background-color: #f5f5f5;
-}
-
-.loading {
-  padding: 10px;
-  color: #666;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .clear-history {
-  float: right;
   background: none;
   border: none;
   color: #666;
@@ -293,12 +359,65 @@ const performSearch = () => {
   font-size: 0.8em;
 }
 
+.suggestion-item {
+  padding: 8px 15px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.suggestion-item:hover {
+  background-color: #f5f5f5;
+}
+
+.suggestion-base {
+  font-weight: bold;
+  color: #1a73e8;
+}
+
+.suggestion-completion {
+  color: #333;
+}
+
+.suggestion-hint {
+  color: #999;
+  font-size: 0.9em;
+  margin-left: 10px;
+}
+
+.suggestions-category {
+  padding: 8px 15px;
+  font-size: 0.9em;
+  color: #666;
+  background-color: #f5f5f5;
+  border-top: 1px solid #eee;
+  border-bottom: 1px solid #eee;
+}
+
+.author-item {
+  padding-left: 25px;
+}
+
+.product-item {
+  padding: 10px 15px;
+  border-bottom: 1px solid #f0f0f0;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.product-author {
+  font-size: 0.8em;
+  color: #666;
+  margin-top: 3px;
+}
+
 .remove-item {
-  float: right;
   background: none;
   border: none;
-  color: #ff0000;
+  color: #999;
   cursor: pointer;
+  font-size: 1.2em;
   padding: 0 5px;
 }
 
