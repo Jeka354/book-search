@@ -8,6 +8,7 @@
         @input="handleInput"
         @focus="showSuggestions = true"
         @blur="onBlur"
+        @keydown="handleKeyDown"
         placeholder="Введите название книги или товара"
         class="search-input"
       >
@@ -50,7 +51,9 @@
             <div 
               v-for="(suggestion, index) in apiSuggestions" 
               :key="'suggest-'+index"
+              :ref="el => setSuggestionRef(el, index)"
               class="suggestion-item"
+              :class="{ 'active-suggestion': activeSuggestionIndex === index }"
               @mousedown="selectSuggestion(suggestion)"
             >
               <span class="suggestion-base">{{ suggestion.base }}</span>
@@ -65,7 +68,9 @@
             <div 
               v-for="(author, index) in authors" 
               :key="'author-'+index"
+              :ref="el => setSuggestionRef(el, apiSuggestions.length + index)"
               class="suggestion-item author-item"
+              :class="{ 'active-suggestion': activeSuggestionIndex === apiSuggestions.length + index }"
               @mousedown="selectSuggestion(author)"
             >
               {{ author }}
@@ -76,7 +81,9 @@
             <div 
               v-for="(product, index) in products" 
               :key="'product-'+index"
+              :ref="el => setSuggestionRef(el, apiSuggestions.length + authors.length + index)"
               class="suggestion-item product-item"
+              :class="{ 'active-suggestion': activeSuggestionIndex === apiSuggestions.length + authors.length + index }"
               @mousedown="selectSuggestion(product)"
             >
               <strong>{{ product.title }}</strong>
@@ -90,7 +97,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 
 // const POPULAR_SUGGESTIONS = ['книги', 'канцтовары', 'подарки', 'бестселлеры', 'новинки'];
 
@@ -102,6 +109,8 @@ const authors = ref([]);
 const products = ref([]);
 const searchHistory = ref([]);
 const debounceTimeout = ref(null);
+const activeSuggestionIndex = ref(-1);
+const suggestionElements = ref([]);
 
 // Получение истории из LocalStorage
 const getHistoryFromStorage = () => {
@@ -138,6 +147,7 @@ const filteredHistory = computed(() => {
 // Обработчик ввода
 const handleInput = () => {
   showSuggestions.value = true;
+  activeSuggestionIndex.value = -1;
   
   if (debounceTimeout.value) {
     clearTimeout(debounceTimeout.value);
@@ -230,6 +240,16 @@ const fetchSuggestions = async (phrase) => {
   }
 };
 
+const setSuggestionRef = (el, index) => {
+  if (el) {
+    // Инициализируем массив при необходимости
+    if (!suggestionElements.value[index]) {
+      suggestionElements.value = [...suggestionElements.value];
+    }
+    suggestionElements.value[index] = el;
+  }
+};
+
 // Выбор подсказки
 const selectSuggestion = (item) => {
   let selectedText = '';
@@ -284,6 +304,81 @@ const performSearch = () => {
   
   console.log('Выполняем поиск:', query);
 };
+
+const handleKeyDown = (e) => {
+  const totalSuggestions = apiSuggestions.value.length + authors.value.length + products.value.length;
+  
+  if (totalSuggestions === 0) return;
+  
+  switch (e.key) {
+    case 'ArrowUp':
+      e.preventDefault();
+      activeSuggestionIndex.value = activeSuggestionIndex.value <= 0 
+        ? totalSuggestions - 1 
+        : activeSuggestionIndex.value - 1;
+      scrollToActive();
+      break;
+      
+    case 'ArrowDown':
+      e.preventDefault();
+      activeSuggestionIndex.value = activeSuggestionIndex.value >= totalSuggestions - 1 
+        ? 0 
+        : activeSuggestionIndex.value + 1;
+      scrollToActive();
+      break;
+      
+    case 'Enter':
+      if (activeSuggestionIndex.value >= 0) {
+        e.preventDefault();
+        selectActiveSuggestion();
+      }
+      break;
+      
+    case 'Tab':
+    case 'ArrowRight':
+      if (activeSuggestionIndex.value >= 0) {
+        e.preventDefault();
+        completeCurrentWord();
+      }
+      break;
+  }
+};
+
+const scrollToActive = () => {
+  nextTick(() => {
+    if (activeSuggestionIndex.value >= 0 && suggestionElements.value[activeSuggestionIndex.value]) {
+      suggestionElements.value[activeSuggestionIndex.value].scrollIntoView({
+        block: 'nearest',
+        behavior: 'smooth'
+      });
+    }
+  });
+};
+
+const selectActiveSuggestion = () => {
+  const totalApi = apiSuggestions.value.length;
+  const totalAuthors = authors.value.length;
+  
+  if (activeSuggestionIndex.value < totalApi) {
+    selectSuggestion(apiSuggestions.value[activeSuggestionIndex.value]);
+  } else if (activeSuggestionIndex.value < totalApi + totalAuthors) {
+    selectSuggestion(authors.value[activeSuggestionIndex.value - totalApi]);
+  } else {
+    selectSuggestion(products.value[activeSuggestionIndex.value - totalApi - totalAuthors]);
+  }
+};
+
+const completeCurrentWord = () => {
+  if (activeSuggestionIndex.value < apiSuggestions.value.length) {
+    const suggestion = apiSuggestions.value[activeSuggestionIndex.value];
+    searchQuery.value = suggestion.base + suggestion.completion.split(' ')[0];
+  }
+};
+
+// Сбрасываем активный индекс при скрытии подсказок
+watch(showSuggestions, (val) => {
+  if (!val) activeSuggestionIndex.value = -1;
+});
 </script>
 
 <style scoped>
@@ -423,5 +518,10 @@ const performSearch = () => {
 
 .remove-item:hover {
   color: #f00;
+}
+
+.active-suggestion {
+  background-color: #e8f0fe !important;
+  color: #1a73e8;
 }
 </style>
