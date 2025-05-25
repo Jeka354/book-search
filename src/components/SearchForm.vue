@@ -1,6 +1,6 @@
 <template>
   <div class="search-container">
-    <h1>Найти книгу или товар</h1>
+    <h1>Компонент поиска</h1>
     <div class="search-input-wrapper">
       <input 
         type="text" 
@@ -13,9 +13,16 @@
         class="search-input"
       >
       <button class="search-button" @click="performSearch">
-        <svg class="search-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-          <path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 0 0 1.48-5.34c-.47-2.78-2.79-5-5.59-5.34a6.505 6.505 0 0 0-7.27 7.27c.34 2.8 2.56 5.12 5.34 5.59a6.5 6.5 0 0 0 5.34-1.48l.27.28v.79l4.25 4.25c.41.41 1.08.41 1.49 0 .41-.41.41-1.08 0-1.49L15.5 14zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
-        </svg>
+        <svg width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="44" height="44" rx="4" fill="#00499C"/>
+          <mask id="mask0_2616_125" style="mask-type:alpha" maskUnits="userSpaceOnUse" x="10" y="10" width="24" height="24">
+          <path d="M13 19.9989C13 23.8649 16.134 26.9989 20 26.9989C21.2055 26.9989 22.3399 26.6941 23.3303 26.1575L27.5859 30.4131C28.367 31.1942 29.6333 31.1942 30.4144 30.4131C31.1954 29.6321 31.1954 28.3658 30.4144 27.5847L26.1587 23.329C26.6953 22.3387 27 21.2044 27 19.9989C27 16.1329 23.866 12.9989 20 12.9989C16.134 12.9989 13 16.1329 13 19.9989ZM25 19.9989C25 22.7603 22.7614 24.9989 20 24.9989C17.2386 24.9989 15 22.7603 15 19.9989C15 17.2375 17.2386 14.9989 20 14.9989C22.7614 14.9989 25 17.2375 25 19.9989Z" fill="white"/>
+          </mask>
+          <g mask="url(#mask0_2616_125)">
+          <rect x="10" y="10" width="24" height="24" fill="white"/>
+          </g>
+          </svg>
+
       </button>
       
       <!-- Блок подсказок -->
@@ -393,20 +400,30 @@ watch(showSuggestions, (val) => {
 }
 
 .search-input {
+  border: 1px solid #a5cfff;
+  border-radius: 10px;
+  outline: none;
+  min-height: 55px;
   width: 100%;
-  padding: 10px 40px 10px 15px;
+  padding: 10px 60px 10px 15px;
   box-sizing: border-box;
 }
 
+.search-input:focus-visible{
+  outline: 3px solid #C7DFFB;;
+}
+
 .search-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   position: absolute;
-  right: 10px;
+  right: 1px;
   top: 50%;
   transform: translateY(-50%);
   background: none;
   border: none;
   cursor: pointer;
-  padding: 5px;
 }
 
 .search-icon {
@@ -468,7 +485,7 @@ watch(showSuggestions, (val) => {
 
 .suggestion-base {
   font-weight: bold;
-  color: #1a73e8;
+  color: #11101E;
 }
 
 .suggestion-completion {
@@ -484,14 +501,14 @@ watch(showSuggestions, (val) => {
 .suggestions-category {
   padding: 8px 15px;
   font-size: 0.9em;
-  color: #666;
+  color: #00499C;
   background-color: #f5f5f5;
   border-top: 1px solid #eee;
   border-bottom: 1px solid #eee;
 }
 
 .author-item {
-  padding-left: 25px;
+  padding-left: 10px 15px;
 }
 
 .product-item {
