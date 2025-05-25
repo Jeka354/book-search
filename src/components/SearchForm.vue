@@ -21,34 +21,53 @@
           <g mask="url(#mask0_2616_125)">
           <rect x="10" y="10" width="24" height="24" fill="white"/>
           </g>
-          </svg>
-
+        </svg>
       </button>
       
       <!-- Блок подсказок -->
       <div 
         class="suggestions-container" 
-        v-show="showSuggestions && (filteredHistory.length || apiSuggestions.length || authors.length || products.length || isLoading)"
+        v-show="showSuggestions && (filteredHistory.length || suggestionsToShow.length || apiSuggestions.length || authors.length || products.length || isLoading)"
       >
         <div v-if="isLoading" class="loading">Загрузка...</div>
         
         <template v-else>
           <!-- История поиска -->
-          <div v-if="!searchQuery && filteredHistory.length" class="suggestions-title">
-            История запросов
-            <button v-if="filteredHistory.length" @click="clearHistory" class="clear-history">
-              Очистить историю
-            </button>
-          </div>
-          <div 
-            v-for="(item, index) in filteredHistory" 
-            :key="'history-'+index"
-            class="suggestion-item"
-            @mousedown="selectSuggestion(item)"
-          >
-            {{ item }}
-            <button @click.stop="removeFromHistory(item)" class="remove-item">×</button>
-          </div>
+          <template v-if="!searchQuery">
+            <div v-if="filteredHistory.length" class="suggestions-title">
+              История запросов
+              <button @click="clearHistory" class="clear-history">
+                Очистить историю
+              </button>
+            </div>
+            <div 
+              v-for="(item, index) in filteredHistory" 
+              :key="'history-'+index"
+              class="suggestion-item"
+              @mousedown="selectSuggestion(item)"
+            >
+              {{ item }}
+              <button 
+                @click.stop="removeFromHistory(item, $event)" 
+                class="remove-item"
+              >
+                ×
+              </button>
+            </div>
+
+            <!-- Популярные запросы -->
+            <div v-if="!filteredHistory.length && suggestionsToShow.length" class="suggestions-title">
+              Популярные запросы
+            </div>
+            <div 
+              v-for="(item, index) in suggestionsToShow" 
+              :key="'popular-'+index"
+              class="suggestion-item"
+              @mousedown="selectSuggestion(item)"
+            >
+              {{ item }}
+            </div>
+          </template>
           
           <!-- Результаты поиска -->
           <template v-if="searchQuery">
@@ -103,10 +122,9 @@
   </div>
 </template>
 
+
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue';
-
-// const POPULAR_SUGGESTIONS = ['книги', 'канцтовары', 'подарки', 'бестселлеры', 'новинки'];
 
 const searchQuery = ref('');
 const showSuggestions = ref(false);
@@ -141,14 +159,22 @@ const saveHistoryToStorage = (history) => {
 // Инициализация истории при загрузке
 searchHistory.value = getHistoryFromStorage();
 
-// Фильтрация истории
+// Фильтрация истории (первые 5 записей)
 const filteredHistory = computed(() => {
-  if (searchQuery.value) {
-    return searchHistory.value.filter(item => 
-      item.toLowerCase().includes(searchQuery.value.toLowerCase())
-      ).slice(0, 5);
+  return getHistoryFromStorage().slice(0, 5);
+});
+
+// Популярные запросы (показываются только если история пуста)
+const suggestionsToShow = computed(() => {
+  if (!searchQuery.value && !filteredHistory.value.length) {
+    return [
+      'благословение небожителей',
+      'гарри поттер',
+      'человек бензопила',
+      'свита короля'
+    ];
   }
-  return searchHistory.value.slice(0, 5);
+  return [];
 });
 
 // Обработчик ввода
@@ -179,14 +205,10 @@ const fetchSuggestions = async (phrase) => {
   products.value = [];
   
   try {
-    // Имитация задержки сети
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await new Promise(resolve => setTimeout(resolve, 400));
     
-    // Здесь должен быть реальный запрос к API
-    // Вместо этого используем mock-данные
     const mockResponse = {
       included: [
-        // Подсказки
         {
           attributes: {
             plainPhrase: phrase + ' подсказка 1',
@@ -194,14 +216,12 @@ const fetchSuggestions = async (phrase) => {
           },
           type: 'searchPhraseSuggest'
         },
-        // Авторы
         {
           attributes: {
             fullName: 'Автор для ' + phrase
           },
           type: 'searchFoundAuthor'
         },
-        // Товары
         {
           attributes: {
             title: 'Товар по запросу ' + phrase,
@@ -212,7 +232,6 @@ const fetchSuggestions = async (phrase) => {
       ]
     };
     
-    // Обработка подсказок
     apiSuggestions.value = mockResponse.included
       .filter(item => item?.type === 'searchPhraseSuggest')
       .map(item => {
@@ -225,13 +244,11 @@ const fetchSuggestions = async (phrase) => {
       })
       .slice(0, 5);
       
-    // Обработка авторов
     authors.value = mockResponse.included
       .filter(item => item?.type === 'searchFoundAuthor')
       .map(item => item.attributes.fullName)
       .slice(0, 2);
       
-    // Обработка товаров
     products.value = mockResponse.included
       .filter(item => item?.type === 'product')
       .map(item => ({
@@ -249,7 +266,6 @@ const fetchSuggestions = async (phrase) => {
 
 const setSuggestionRef = (el, index) => {
   if (el) {
-    // Инициализируем массив при необходимости
     if (!suggestionElements.value[index]) {
       suggestionElements.value = [...suggestionElements.value];
     }
@@ -282,7 +298,10 @@ const onBlur = () => {
 };
 
 // Удаление из истории
-const removeFromHistory = (query) => {
+const removeFromHistory = (query, e) => {
+  e.stopPropagation();
+  e.preventDefault();
+  
   const history = getHistoryFromStorage().filter(item => item !== query);
   saveHistoryToStorage(history);
   searchHistory.value = history;
@@ -312,6 +331,7 @@ const performSearch = () => {
   console.log('Выполняем поиск:', query);
 };
 
+// Навигация с клавиатуры
 const handleKeyDown = (e) => {
   const totalSuggestions = apiSuggestions.value.length + authors.value.length + products.value.length;
   
@@ -382,7 +402,7 @@ const completeCurrentWord = () => {
   }
 };
 
-// Сбрасываем активный индекс при скрытии подсказок
+// Сброс активного индекса
 watch(showSuggestions, (val) => {
   if (!val) activeSuggestionIndex.value = -1;
 });
