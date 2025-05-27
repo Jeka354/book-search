@@ -112,8 +112,17 @@
               :class="{ 'active-suggestion': activeSuggestionIndex === apiSuggestions.length + authors.length + index }"
               @mousedown="selectSuggestion(product)"
             >
-              <strong>{{ product.title }}</strong>
-              <div class="product-author" v-if="product.author">{{ product.author }}</div>
+              <img 
+                v-if="product.picture" 
+                :src="getProductImageUrl(product.picture)" 
+                alt=""
+                class="product-image"
+                loading="lazy"
+              >
+              <div class="product-info">
+                <strong>{{ product.title }}</strong>
+                <div class="product-author" v-if="product.author">{{ product.author }}</div>
+              </div>
             </div>
           </template>
         </template>
@@ -125,6 +134,7 @@
 
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue';
+import { useDebounceFn } from '@vueuse/core';
 
 const searchQuery = ref('');
 const showSuggestions = ref(false);
@@ -133,9 +143,12 @@ const apiSuggestions = ref([]);
 const authors = ref([]);
 const products = ref([]);
 const searchHistory = ref([]);
-const debounceTimeout = ref(null);
 const activeSuggestionIndex = ref(-1);
 const suggestionElements = ref([]);
+
+// Константы для API
+const API_BASE_URL = 'https://web-gate.chitai-gorod.ru';
+const API_TOKEN = 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NDg1NDY1NDYsImlhdCI6MTc0ODM3ODU0NiwiaXNzIjoiL2FwaS92MS9hdXRoL2Fub255bW91cyIsInN1YiI6IjM4Njc2OWY5ZDFmNDFhNjA5Mzc1YmJkZTg2NGNjMjFkZDkyZjJkMzJjNDEyODhmNzg2NDk0NjNmNmMyMGEzNTAiLCJ0eXBlIjoxMH0.vI1l7byma8KDNJYANKyZCLipFiqujMl8NcSJ-IceuKk';
 
 // Получение истории из LocalStorage
 const getHistoryFromStorage = () => {
@@ -177,27 +190,37 @@ const suggestionsToShow = computed(() => {
   return [];
 });
 
+// Задерка отправки запроса через debounce
+const debouncedSearch = useDebounceFn((phrase) => {
+  if (phrase.length >= 3) {
+    fetchSuggestions(phrase);
+  } else {
+    apiSuggestions.value = [];
+    authors.value = [];
+    products.value = [];
+  }
+}, 200);
+
 // Обработчик ввода
 const handleInput = () => {
   showSuggestions.value = true;
   activeSuggestionIndex.value = -1;
-  
-  if (debounceTimeout.value) {
-    clearTimeout(debounceTimeout.value);
-  }
-  
-  debounceTimeout.value = setTimeout(() => {
-    if (searchQuery.value.length >= 3) {
-      fetchSuggestions(searchQuery.value);
-    } else {
-      apiSuggestions.value = [];
-      authors.value = [];
-      products.value = [];
-    }
-  }, 200);
+  debouncedSearch(searchQuery.value);
 };
 
-// Имитация API
+// Функция для поиска объекта по ID в массиве included
+const findIncluded = (id, type, included) => {
+  return included.find(item => item.id === id && item.type === type);
+};
+
+// Добавляем функцию для формирования URL изображения
+const getProductImageUrl = (picturePath) => {
+  if (!picturePath) return '';
+  // Удаляем начальный слэш, если он есть
+  const cleanPath = picturePath.startsWith('/') ? picturePath.slice(1) : picturePath;
+  return `https://content.img-gorod.ru/${cleanPath}?width=40&height=48&fit=bounds`;
+};
+
 const fetchSuggestions = async (phrase) => {
   isLoading.value = true;
   apiSuggestions.value = [];
@@ -205,58 +228,65 @@ const fetchSuggestions = async (phrase) => {
   products.value = [];
   
   try {
-    await new Promise(resolve => setTimeout(resolve, 400));
-    
-    const mockResponse = {
-      included: [
-        {
-          attributes: {
-            plainPhrase: phrase + ' подсказка 1',
-            template: `{{${phrase}}} подсказка 1`
-          },
-          type: 'searchPhraseSuggest'
-        },
-        {
-          attributes: {
-            fullName: 'Автор для ' + phrase
-          },
-          type: 'searchFoundAuthor'
-        },
-        {
-          attributes: {
-            title: 'Товар по запросу ' + phrase,
-            authors: [{ fullName: 'Автор товара' }]
-          },
-          type: 'product'
+    const response = await fetch(
+      `${API_BASE_URL}/api/v2/search/search-phrase-suggests?phrase=${encodeURIComponent(phrase)}&include=authors,products`,
+      {
+        headers: {
+          'Authorization': API_TOKEN,
+          'Content-Type': 'application/json'
         }
-      ]
-    };
+      }
+    );
     
-    apiSuggestions.value = mockResponse.included
-      .filter(item => item?.type === 'searchPhraseSuggest')
-      .map(item => {
-        const match = item.attributes.template.match(/\{\{(.+?)\}\}(.*)/);
-        return {
-          base: match[1],
-          completion: match[2],
-          full: item.attributes.plainPhrase
-        };
-      })
-      .slice(0, 5);
-      
-    authors.value = mockResponse.included
-      .filter(item => item?.type === 'searchFoundAuthor')
-      .map(item => item.attributes.fullName)
-      .slice(0, 2);
-      
-    products.value = mockResponse.included
-      .filter(item => item?.type === 'product')
-      .map(item => ({
-        title: item.attributes.title,
-        author: item.attributes.authors?.[0]?.fullName || ''
-      }))
-      .slice(0, 2);
-      
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const json = await response.json();
+    
+    // Десериализация JSON API
+    const included = json.included || [];
+    const relationships = json.data?.relationships || {};
+    
+    // Обработка подсказок
+    if (relationships.suggests?.data) {
+      apiSuggestions.value = relationships.suggests.data
+        .map(({ id }) => findIncluded(id, 'searchPhraseSuggest', included))
+        .filter(Boolean)
+        .map(suggest => {
+          const match = suggest.attributes.template.match(/\{\{(.+?)\}\}(.*)/);
+          return {
+            base: match ? match[1] : '',
+            completion: match ? match[2] : '',
+            full: suggest.attributes.plainPhrase
+          };
+        })
+        .slice(0, 5);
+    }
+    
+    // Обработка авторов
+    if (relationships.authors?.data) {
+      authors.value = relationships.authors.data
+        .map(({ id }) => findIncluded(id, 'searchFoundAuthor', included))
+        .filter(Boolean)
+        .map(author => author.attributes.fullName)
+        .slice(0, 2);
+    }
+    
+    // Обработка товаров 
+    if (relationships.products?.data) {
+      products.value = relationships.products.data
+        .map(({ id }) => findIncluded(id, 'product', included))
+        .filter(Boolean)
+        .map(product => ({
+          title: product.attributes.title,
+          author: product.attributes.authors?.[0]?.fullName || '',
+          price: product.attributes.price,
+          picture: product.attributes.originalPicture || product.attributes.picture 
+        }))
+        .slice(0, 2);
+    }
+    
   } catch (error) {
     console.error('API error:', error);
   } finally {
@@ -495,7 +525,6 @@ watch(showSuggestions, (val) => {
   padding: 8px 15px;
   cursor: pointer;
   display: flex;
-  justify-content: space-between;
   align-items: center;
 }
 
@@ -509,7 +538,8 @@ watch(showSuggestions, (val) => {
 }
 
 .suggestion-completion {
-  color: #333;
+  color: #6e6e6e;
+  margin-left: 5px;
 }
 
 .suggestion-hint {
@@ -534,7 +564,8 @@ watch(showSuggestions, (val) => {
 .product-item {
   padding: 10px 15px;
   border-bottom: 1px solid #f0f0f0;
-  flex-direction: column;
+  flex-direction: row;
+  justify-content: start;
   align-items: flex-start;
 }
 
