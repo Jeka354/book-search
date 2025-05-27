@@ -1,7 +1,7 @@
 <template>
-  <div class="search-container">
-    <h1>Компонент поиска</h1>
-    <div class="search-input-wrapper">
+  <div class="search">
+    <h1 class="search__title">Компонент поиска</h1>
+    <div class="search__input-wrapper">
       <input 
         type="text" 
         v-model="searchQuery"
@@ -10,9 +10,9 @@
         @blur="onBlur"
         @keydown="handleKeyDown"
         placeholder="Введите название книги или товара"
-        class="search-input"
+        class="search__input"
       >
-      <button class="search-button" @click="performSearch">
+      <button class="search__button" @click="performSearch">
         <svg width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
           <rect width="44" height="44" rx="4" fill="#00499C"/>
           <mask id="mask0_2616_125" style="mask-type:alpha" maskUnits="userSpaceOnUse" x="10" y="10" width="24" height="24">
@@ -24,45 +24,45 @@
         </svg>
       </button>
       
-      <!-- Блок подсказок -->
+      <!-- Раздел подсказок -->
       <div 
-        class="suggestions-container" 
+        class="search__suggestions" 
         v-show="showSuggestions && (filteredHistory.length || suggestionsToShow.length || apiSuggestions.length || authors.length || products.length || isLoading)"
       >
-        <div v-if="isLoading" class="loading">Загрузка...</div>
+        <div v-if="isLoading" class="search__loading">Загрузка...</div>
         
         <template v-else>
           <!-- История поиска -->
           <template v-if="!searchQuery">
-            <div v-if="filteredHistory.length" class="suggestions-title">
+            <div v-if="filteredHistory.length" class="search__title-group">
               История запросов
-              <button @click="clearHistory" class="clear-history">
+              <button @click="clearHistory" class="search__clear-history">
                 Очистить историю
               </button>
             </div>
             <div 
               v-for="(item, index) in filteredHistory" 
               :key="'history-'+index"
-              class="suggestion-item"
+              class="search__item"
               @mousedown="selectSuggestion(item)"
             >
               {{ item }}
               <button 
                 @click.stop="removeFromHistory(item, $event)" 
-                class="remove-item"
+                class="search__remove-btn"
               >
                 ×
               </button>
             </div>
 
             <!-- Популярные запросы -->
-            <div v-if="!filteredHistory.length && suggestionsToShow.length" class="suggestions-title">
+            <div v-if="!filteredHistory.length && suggestionsToShow.length" class="search__title-group">
               Популярные запросы
             </div>
             <div 
               v-for="(item, index) in suggestionsToShow" 
               :key="'popular-'+index"
-              class="suggestion-item"
+              class="search__item"
               @mousedown="selectSuggestion(item)"
             >
               {{ item }}
@@ -71,57 +71,57 @@
           
           <!-- Результаты поиска -->
           <template v-if="searchQuery">
-            <div class="suggestions-title">Результаты поиска</div>
+            <div class="search__title-group">Результаты поиска</div>
             
             <!-- Подсказки -->
             <div 
               v-for="(suggestion, index) in apiSuggestions" 
               :key="'suggest-'+index"
               :ref="el => setSuggestionRef(el, index)"
-              class="suggestion-item"
-              :class="{ 'active-suggestion': activeSuggestionIndex === index }"
+              class="search__item"
+              :class="{ 'search__item--active': activeSuggestionIndex === index }"
               @mousedown="selectSuggestion(suggestion)"
             >
-              <span class="suggestion-base">{{ suggestion.base }}</span>
-              <span class="suggestion-completion">{{ suggestion.completion }}</span>
-              <span class="suggestion-hint" v-if="index === 0">
+              <span class="search__base-text">{{ suggestion.base }}</span>
+              <span class="search__completion-text">{{ suggestion.completion }}</span>
+              <span class="search__hint-text" v-if="index === 0">
                 {{ suggestion.completion.split(' ')[0] }}
               </span>
             </div>
             
             <!-- Авторы -->
-            <div class="suggestions-category" v-if="authors.length">Авторы</div>
+            <div class="search__category" v-if="authors.length">Авторы</div>
             <div 
               v-for="(author, index) in authors" 
               :key="'author-'+index"
               :ref="el => setSuggestionRef(el, apiSuggestions.length + index)"
-              class="suggestion-item author-item"
-              :class="{ 'active-suggestion': activeSuggestionIndex === apiSuggestions.length + index }"
+              class="search__item"
+              :class="{ 'search__item--active': activeSuggestionIndex === apiSuggestions.length + index }"
               @mousedown="selectSuggestion(author)"
             >
               {{ author }}
             </div>
             
             <!-- Товары -->
-            <div class="suggestions-category" v-if="products.length">Книги и товары</div>
+            <div class="search__category" v-if="products.length">Книги и товары</div>
             <div 
               v-for="(product, index) in products" 
               :key="'product-'+index"
               :ref="el => setSuggestionRef(el, apiSuggestions.length + authors.length + index)"
-              class="suggestion-item product-item"
-              :class="{ 'active-suggestion': activeSuggestionIndex === apiSuggestions.length + authors.length + index }"
+              class="search__item search__product"
+              :class="{ 'search__item--active': activeSuggestionIndex === apiSuggestions.length + authors.length + index }"
               @mousedown="selectSuggestion(product)"
             >
               <img 
                 v-if="product.picture" 
                 :src="getProductImageUrl(product.picture)" 
                 alt=""
-                class="product-image"
+                class="search__product-image"
                 loading="lazy"
               >
-              <div class="product-info">
+              <div class="search__product-info">
                 <strong>{{ product.title }}</strong>
-                <div class="product-author" v-if="product.author">{{ product.author }}</div>
+                <div class="search__product-author" v-if="product.author">{{ product.author }}</div>
               </div>
             </div>
           </template>
@@ -438,158 +438,229 @@ watch(showSuggestions, (val) => {
 });
 </script>
 
-<style scoped>
-.search-container {
-  padding: 20px;
-  position: relative;
+<style scoped lang="scss">
+/* Базовые стили mobile */
+.search {
+    padding: 12px;
+    position: relative;
+    max-width: 100%;
+
+  &__title {
+    font-size: 18px;
+    margin-bottom: 12px;
+    color: #11101E;
+  }
+
+  &__input-wrapper {
+    position: relative;
+    width: 100%;
+  }
+
+  &__input {
+    border: 1px solid #a5cfff;
+    border-radius: 8px;
+    outline: none;
+    min-height: 53px;
+    width: 100%;
+    padding: 8px 52px 8px 12px;
+    box-sizing: border-box;
+    font-size: 14px;
+
+    &:focus-visible {
+      outline: 3px solid #C7DFFB;
+    }
+  }
+
+  &__button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    right: 7px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    cursor: pointer;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+
+    & svg {
+      width: 100%;
+      height: 100%;
+    }
+  }
+
+  &__suggestions {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    z-index: 100;
+    margin-top: 4px;
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+
+  &__loading {
+    padding: 12px;
+    color: #666;
+    text-align: center;
+    font-size: 14px;
+  }
+
+  &__title-group {
+    padding: 8px 12px;
+    font-size: 13px;
+    color: #666;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  &__clear-history {
+    background: none;
+    border: none;
+    color: #666;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 2px 4px;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  &__item {
+    padding: 8px 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    font-size: 14px;
+
+    &:hover {
+      background-color: #f5f5f5;
+    }
+
+    &--active {
+      background-color: #e8f0fe !important;
+      color: #1a73e8;
+    }
+  }
+
+  &__base-text {
+    font-weight: bold;
+    color: #11101E;
+  }
+
+  &__completion-text {
+    color: #6e6e6e;
+    margin-left: 4px;
+  }
+
+  &__hint-text {
+    color: #999;
+    font-size: 12px;
+    margin-left: 8px;
+  }
+
+  &__category {
+    padding: 8px 12px;
+    font-size: 13px;
+    color: #00499C;
+    background-color: #f5f5f5;
+    border-top: 1px solid #eee;
+    border-bottom: 1px solid #eee;
+  }
+
+  &__remove-btn {
+    background: none;
+    border: none;
+    color: #999;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 0 4px;
+    margin-left: auto;
+
+    &:hover {
+      color: #f00;
+    }
+  }
+
+  &__product {
+    display: flex;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid #f0f0f0;
+    align-items: flex-start;
+  }
+
+  &__product-image {
+    width: 40px;
+    height: 48px;
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+
+  &__product-info {
+    flex-grow: 1;
+  }
+
+  &__product-author {
+    font-size: 12px;
+    color: #666;
+    margin-top: 2px;
+  }
 }
 
-.search-input-wrapper {
-  position: relative;
-  width: 100%;
+/* Адаптация для планшетов */
+@media (min-width: 600px) {
+  .search {
+    padding: 16px;
+
+    &__title {
+      font-size: 20px;
+      margin-bottom: 16px;
+    }
+
+    &__input {
+      min-height: 55px;
+      padding: 10px 56px 10px 16px;
+      font-size: 15px;
+    }
+
+    &__suggestions {
+      max-height: 400px;
+    }
+  }
 }
 
-.search-input {
-  border: 1px solid #a5cfff;
-  border-radius: 10px;
-  outline: none;
-  min-height: 55px;
-  width: 100%;
-  padding: 10px 60px 10px 15px;
-  box-sizing: border-box;
-}
+/* Адаптация для десктопов */
+@media (min-width: 900px) {
+  .search {
+      padding: 20px;
+      max-width: 800px;
+      margin: 0 auto;
 
-.search-input:focus-visible{
-  outline: 3px solid #C7DFFB;;
-}
+    &__input {
+      min-height: 55px;
+      padding: 12px 60px 12px 20px;
+      font-size: 16px;
+    }
 
-.search-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: absolute;
-  right: 1px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: none;
-  border: none;
-  cursor: pointer;
-}
+    &__item {
+      padding: 10px 16px;
+    }
 
-.search-icon {
-  width: 20px;
-  height: 20px;
-  fill: #555;
-}
-
-.suggestions-container {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  background: white;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-  z-index: 100;
-  margin-top: 5px;
-  max-height: 400px;
-  overflow-y: auto;
-}
-
-.loading {
-  padding: 10px;
-  color: #666;
-  text-align: center;
-}
-
-.suggestions-title {
-  padding: 8px 15px;
-  font-size: 0.9em;
-  color: #666;
-  border-bottom: 1px solid #eee;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.clear-history {
-  background: none;
-  border: none;
-  color: #666;
-  cursor: pointer;
-  font-size: 0.8em;
-}
-
-.suggestion-item {
-  padding: 8px 15px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-}
-
-.suggestion-item:hover {
-  background-color: #f5f5f5;
-}
-
-.suggestion-base {
-  font-weight: bold;
-  color: #11101E;
-}
-
-.suggestion-completion {
-  color: #6e6e6e;
-  margin-left: 5px;
-}
-
-.suggestion-hint {
-  color: #999;
-  font-size: 0.9em;
-  margin-left: 10px;
-}
-
-.suggestions-category {
-  padding: 8px 15px;
-  font-size: 0.9em;
-  color: #00499C;
-  background-color: #f5f5f5;
-  border-top: 1px solid #eee;
-  border-bottom: 1px solid #eee;
-}
-
-.author-item {
-  padding-left: 10px 15px;
-}
-
-.product-item {
-  padding: 10px 15px;
-  border-bottom: 1px solid #f0f0f0;
-  flex-direction: row;
-  justify-content: start;
-  align-items: flex-start;
-}
-
-.product-author {
-  font-size: 0.8em;
-  color: #666;
-  margin-top: 3px;
-}
-
-.remove-item {
-  background: none;
-  border: none;
-  color: #999;
-  cursor: pointer;
-  font-size: 1.2em;
-  padding: 0 5px;
-}
-
-.remove-item:hover {
-  color: #f00;
-}
-
-.active-suggestion {
-  background-color: #e8f0fe !important;
-  color: #1a73e8;
+    &__title-group {
+      padding: 10px 16px;
+    }
+  }
 }
 </style>
