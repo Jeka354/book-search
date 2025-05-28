@@ -1,6 +1,5 @@
 <template>
   <div class="search">
-    <h1 class="search__title">Компонент поиска</h1>
     <div class="search__input-wrapper">
       <input 
         type="text" 
@@ -44,12 +43,12 @@
               v-for="(item, index) in filteredHistory" 
               :key="'history-'+index"
               class="search__item"
-              @mousedown="selectSuggestion(item)"
             >
-              {{ item }}
+              <span @mousedown="selectSuggestion(item, $event)">{{ item }}</span>
               <button 
-                @click.stop="removeFromHistory(item, $event)" 
+                @mousedown.stop.prevent="removeFromHistory(index, $event)"
                 class="search__remove-btn"
+                type="button"
               >
                 ×
               </button>
@@ -84,9 +83,6 @@
             >
               <span class="search__base-text">{{ suggestion.base }}</span>
               <span class="search__completion-text">{{ suggestion.completion }}</span>
-              <span class="search__hint-text" v-if="index === 0">
-                {{ suggestion.completion.split(' ')[0] }}
-              </span>
             </div>
             
             <!-- Авторы -->
@@ -120,8 +116,10 @@
                 loading="lazy"
               >
               <div class="search__product-info">
-                <strong>{{ product.title }}</strong>
-                <div class="search__product-author" v-if="product.author">{{ product.author }}</div>
+                <span>{{ product.title }}</span>
+                <div class="search__product-author" v-if="product.author && product.author.length">
+                  {{ product.author }}
+                </div>
               </div>
             </div>
           </template>
@@ -174,7 +172,7 @@ searchHistory.value = getHistoryFromStorage();
 
 // Фильтрация истории (первые 5 записей)
 const filteredHistory = computed(() => {
-  return getHistoryFromStorage().slice(0, 5);
+  return searchHistory.value.slice(0, 5); 
 });
 
 // Популярные запросы (показываются только если история пуста)
@@ -275,17 +273,25 @@ const fetchSuggestions = async (phrase) => {
     
     // Обработка товаров 
     if (relationships.products?.data) {
-      products.value = relationships.products.data
-        .map(({ id }) => findIncluded(id, 'product', included))
-        .filter(Boolean)
-        .map(product => ({
+    products.value = relationships.products.data
+      .map(({ id }) => findIncluded(id, 'product', included))
+      .filter(Boolean)
+      .map(product => {
+        // Получаем авторов из атрибутов продукта
+        const authors = product.attributes.authors || [];
+        const authorNames = authors.map(a => 
+          [a.lastName, a.firstName, a.middleName].filter(Boolean).join(' ')
+        );
+        
+        return {
           title: product.attributes.title,
-          author: product.attributes.authors?.[0]?.fullName || '',
+          author: authorNames.join(', '), // Объединяем авторов через запятую
           price: product.attributes.price,
           picture: product.attributes.originalPicture || product.attributes.picture 
-        }))
-        .slice(0, 2);
-    }
+        };
+      })
+      .slice(0, 2);
+  }
     
   } catch (error) {
     console.error('API error:', error);
@@ -304,7 +310,9 @@ const setSuggestionRef = (el, index) => {
 };
 
 // Выбор подсказки
-const selectSuggestion = (item) => {
+const selectSuggestion = (item, event) => {
+  if (event) event.preventDefault();
+  
   let selectedText = '';
   
   if (typeof item === 'string') {
@@ -312,7 +320,7 @@ const selectSuggestion = (item) => {
   } else if (item?.full) {
     selectedText = item.full;
   } else if (item?.title) {
-    selectedText = item.title;
+    selectedText = item.title + (item.author ? ` (${item.author})` : '');
   }
   
   searchQuery.value = selectedText;
@@ -328,11 +336,9 @@ const onBlur = () => {
 };
 
 // Удаление из истории
-const removeFromHistory = (query, e) => {
-  e.stopPropagation();
-  e.preventDefault();
-  
-  const history = getHistoryFromStorage().filter(item => item !== query);
+const removeFromHistory = (index) => {
+  const history = [...searchHistory.value];
+  history.splice(index, 1);
   saveHistoryToStorage(history);
   searchHistory.value = history;
 };
@@ -355,7 +361,7 @@ const performSearch = () => {
   if (!history.includes(query)) {
     const newHistory = [query, ...history].slice(0, 10);
     saveHistoryToStorage(newHistory);
-    searchHistory.value = newHistory;
+    searchHistory.value = newHistory; 
   }
   
   console.log('Выполняем поиск:', query);
@@ -373,6 +379,7 @@ const handleKeyDown = (e) => {
       activeSuggestionIndex.value = activeSuggestionIndex.value <= 0 
         ? totalSuggestions - 1 
         : activeSuggestionIndex.value - 1;
+      updateSearchFromSuggestion();
       scrollToActive();
       break;
       
@@ -381,6 +388,7 @@ const handleKeyDown = (e) => {
       activeSuggestionIndex.value = activeSuggestionIndex.value >= totalSuggestions - 1 
         ? 0 
         : activeSuggestionIndex.value + 1;
+      updateSearchFromSuggestion();
       scrollToActive();
       break;
       
@@ -388,16 +396,45 @@ const handleKeyDown = (e) => {
       if (activeSuggestionIndex.value >= 0) {
         e.preventDefault();
         selectActiveSuggestion();
+        performSearch();
+      }
+      break;
+      
+    case 'ArrowRight':
+      e.preventDefault();
+      if (activeSuggestionIndex.value >= 0) {
+        completeCurrentWord();
+        // Обновляем результаты после добавления слова
+        debouncedSearch(searchQuery.value);
       }
       break;
       
     case 'Tab':
-    case 'ArrowRight':
+      e.preventDefault();
       if (activeSuggestionIndex.value >= 0) {
-        e.preventDefault();
         completeCurrentWord();
+        // Обновляем результаты после добавления слова
+        debouncedSearch(searchQuery.value);
       }
       break;
+  }
+};
+
+// Обновляем поисковую строку при навигации стрелками
+const updateSearchFromSuggestion = () => {
+  if (activeSuggestionIndex.value < 0) return;
+  
+  const totalApi = apiSuggestions.value.length;
+  const totalAuthors = authors.value.length;
+  
+  if (activeSuggestionIndex.value < totalApi) {
+    const suggestion = apiSuggestions.value[activeSuggestionIndex.value];
+    searchQuery.value = suggestion.full;
+  } else if (activeSuggestionIndex.value < totalApi + totalAuthors) {
+    searchQuery.value = authors.value[activeSuggestionIndex.value - totalApi];
+  } else {
+    const product = products.value[activeSuggestionIndex.value - totalApi - totalAuthors];
+    searchQuery.value = product.title;
   }
 };
 
@@ -436,20 +473,26 @@ const completeCurrentWord = () => {
 watch(showSuggestions, (val) => {
   if (!val) activeSuggestionIndex.value = -1;
 });
+
+// Отслеживаем очистку поисковой строки
+watch(searchQuery, (newVal) => {
+  if (!newVal) {
+    // Обновляем историю при очистке поля
+    searchHistory.value = getHistoryFromStorage();
+  }
+});
 </script>
 
 <style scoped lang="scss">
+@import url('https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600&display=swap');
 /* Базовые стили mobile */
 .search {
+    font-family: 'Rubik', sans-serif;
     padding: 12px;
     position: relative;
-    max-width: 100%;
-
-  &__title {
-    font-size: 18px;
-    margin-bottom: 12px;
-    color: #11101E;
-  }
+    max-width: 584px;
+    max-height: 52px;
+    font-weight: 400;
 
   &__input-wrapper {
     position: relative;
@@ -464,7 +507,7 @@ watch(showSuggestions, (val) => {
     width: 100%;
     padding: 8px 52px 8px 12px;
     box-sizing: border-box;
-    font-size: 14px;
+    font-size: 16px;
 
     &:focus-visible {
       outline: 3px solid #C7DFFB;
@@ -515,7 +558,7 @@ watch(showSuggestions, (val) => {
   }
 
   &__title-group {
-    padding: 8px 12px;
+    padding: 10px 12px;
     font-size: 13px;
     color: #666;
     border-bottom: 1px solid #eee;
@@ -538,7 +581,7 @@ watch(showSuggestions, (val) => {
   }
 
   &__item {
-    padding: 8px 12px;
+    padding: 10px 12px;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -549,34 +592,32 @@ watch(showSuggestions, (val) => {
     }
 
     &--active {
-      background-color: #e8f0fe !important;
-      color: #1a73e8;
+      background-color: #e8f0fe
     }
   }
 
   &__base-text {
-    font-weight: bold;
+    font-weight: 400;
+    font-size: 16px;
+    line-height: 20px;
     color: #11101E;
   }
 
   &__completion-text {
-    color: #6e6e6e;
+    font-weight: 400;
+    font-size: 16px;
+    line-height: 20px;
+    color: #737880;
     margin-left: 4px;
   }
 
-  &__hint-text {
-    color: #999;
-    font-size: 12px;
-    margin-left: 8px;
-  }
-
   &__category {
-    padding: 8px 12px;
+    font-weight: 450;
+    padding: 10px 12px;
     font-size: 13px;
+    line-height: 20px;
     color: #00499C;
-    background-color: #f5f5f5;
-    border-top: 1px solid #eee;
-    border-bottom: 1px solid #eee;
+    border-top: 1px solid #E0E4E7;
   }
 
   &__remove-btn {
@@ -595,13 +636,17 @@ watch(showSuggestions, (val) => {
 
   &__product {
     display: flex;
+    line-height: 20px;
+    font-weight: 400;
+    font-size: 16px;
     gap: 8px;
-    padding: 8px 12px;
+    padding: 10px 12px;
     border-bottom: 1px solid #f0f0f0;
     align-items: flex-start;
   }
 
   &__product-image {
+    margin-right: 12px;
     width: 40px;
     height: 48px;
     object-fit: cover;
@@ -609,13 +654,17 @@ watch(showSuggestions, (val) => {
   }
 
   &__product-info {
+    line-height: 20px;
+    font-weight: 400;
+    font-size: 16px;
     flex-grow: 1;
   }
 
   &__product-author {
     font-size: 12px;
-    color: #666;
-    margin-top: 2px;
+    line-height: 18px;
+    color: #737880;
+    margin-top: 5px;
   }
 }
 
@@ -645,7 +694,7 @@ watch(showSuggestions, (val) => {
 @media (min-width: 900px) {
   .search {
       padding: 20px;
-      max-width: 800px;
+      max-width: 584px;
       margin: 0 auto;
 
     &__input {
@@ -655,11 +704,11 @@ watch(showSuggestions, (val) => {
     }
 
     &__item {
-      padding: 10px 16px;
+      padding: 10px 12px;
     }
 
     &__title-group {
-      padding: 10px 16px;
+      padding: 10px 12px;
     }
   }
 }
